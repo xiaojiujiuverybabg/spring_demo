@@ -1,0 +1,41 @@
+spring:
+  thymeleaf:
+    cache: true
+  jpa:
+    database-platform: org.hibernate.dialect.Oracle10gDialect
+    database: ORACLE
+    properties:
+      hibernate.default_catalog: o2ocardnew
+      hibernate.default_schema: o2ocardnew
+  datasource:
+    url: jdbc:oracle:thin:@192.168.20.48:1522:zhonglian
+    username: o2ocardnew
+    password: o2ocardnew123456
+    driverClassName: oracle.jdbc.driver.OracleDriver
+
+# REDIS (RedisProperties)
+# database name defaul 0 
+  redis:
+    database: 0
+    host: 192.168.20.48
+    port: 6379
+    password: 123456
+    pool:
+      max-idle: 8
+      min-idle: 0
+      max-active: 8
+      max-wait: -1
+    #sentinel:
+      #master:
+      #nodes:
+
+  dubbo:
+    file: dubbo/spring-prod.xml
+application:
+  portal: http://www.myvipo2o.com/Portal/dest/index.html
+  domain: http://www.myvipo2o.com/${app.name}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://admin:sanjiaoyi123456@192.168.20.47:8761/eureka/,http://admin:sanjiaoyi123456@192.168.20.47:8762/eureka/    

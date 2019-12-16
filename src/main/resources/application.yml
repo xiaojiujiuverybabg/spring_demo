@@ -1,0 +1,74 @@
+#tomcat start port
+app:
+  name: crm-channel-service
+server:
+  port: 8098
+  #contextPath: /crm-channel-service
+  
+#log
+logging:
+  config: classpath:log4j2.xml
+
+#########################################
+## contexts: # runtime contexts to use
+## default-schema: # default database schema to use
+#########################################
+liquibase:
+  change-log: classpath:/liquibase/master.xml
+  contexts: dev
+  default-schema:
+  drop-first: false
+  enabled: true 
+  
+spring:
+  application:
+    name: crm-channel-service
+  profiles:
+    active: dev
+    include: swagger
+# Specify the DBMS
+  jpa:
+    open-in-view: true
+    show-sql: false
+    hibernate:
+      ddl-auto: none
+      naming:
+        implicit-strategy: org.springframework.boot.orm.jpa.hibernate.SpringImplicitNamingStrategy
+        physical-strategy: com.sjy.util.MyPhysicalNamingStrategyStandardImpl
+
+    properties:
+      hibernate.current_session_context_class: thread
+      hibernate.show_sql: false
+      hibernate.format_sql: false
+      hibernate.id.new_generator_mappings: true
+      hibernate.cache.use_second_level_cache: true
+      hibernate.cache.use_query_cache: false
+      hibernate.generate_statistics: true
+      hibernate.cache.region.factory_class: org.hibernate.cache.ehcache.EhCacheRegionFactory
+
+application:    
+  list.maxcount: 50000 
+  
+eureka:
+  client:
+    enabled: true
+    healthcheck:
+      enabled: true
+    fetch-registry: true
+    register-with-eureka: true
+    instance-info-replication-interval-seconds: 10
+    registry-fetch-interval-seconds: 10
+  instance:
+    appname: ${app.name}
+    prefer-ip-address: true
+    instanceId: ${app.name}:${spring.cloud.client.ipAddress}:${spring.application.instance-id:${server.port}}
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 10
+    status-page-url-path: ${management.context-path}/info
+    health-check-url-path: ${management.context-path}/health
+    metadata-map:
+      profile: ${spring.profiles.active}
+      version: ${info.project.version}
+ribbon:
+  eureka:
+    enabled: true     

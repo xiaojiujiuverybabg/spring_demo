@@ -1,0 +1,38 @@
+spring:
+  thymeleaf:
+    cache: true
+  jpa:
+    database-platform: org.hibernate.dialect.Oracle10gDialect
+    database: ORACLE
+    properties:
+      hibernate.default_catalog: o2ocardnew
+      hibernate.default_schema: o2ocardnew  
+  datasource:
+    url: jdbc:oracle:thin:@192.168.1.67:1521:ORCL
+    username: o2ocardnew
+    password: o2ocardnew
+    driverClassName: oracle.jdbc.driver.OracleDriver
+    
+# REDIS (RedisProperties)
+# database name defaul 0 
+  redis:
+    database: 0
+    host: 127.0.0.1
+    port: 6379
+    password: 123456
+    pool:
+      max-idle: 8   
+      min-idle: 0  
+      max-active: 8  
+      max-wait: -1 
+    #sentinel:
+      #master:
+      #nodes:
+
+  dubbo:
+    file: dubbo/spring-stg.xml
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://admin:sanjiaoyi123456@192.168.1.237:8761/eureka/,http://admin:sanjiaoyi123456@192.168.1.237:8762/eureka/ 

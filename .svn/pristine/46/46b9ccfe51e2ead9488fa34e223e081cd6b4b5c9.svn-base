@@ -1,0 +1,46 @@
+#log
+logging:
+  config: classpath:log4j2.xml
+  
+spring:
+  thymeleaf:
+    cache: false
+  jpa:
+    database-platform: org.hibernate.dialect.Oracle10gDialect
+    database: ORACLE
+    properties:
+      hibernate.default_catalog: o2ocardnew
+      hibernate.default_schema: o2ocardnew
+  datasource:
+    url: jdbc:oracle:thin:@localhost:15222:zhonglian
+    username: o2ocardnew
+    password: o2ocardnew123456
+    driverClassName: oracle.jdbc.driver.OracleDriver
+#  data:
+#    mongodb:
+#      host: 192.168.1.115
+#      port: 27017
+#      database: newlog 
+  dubbo:
+    file: dubbo/spring-dev.xml
+application:
+  domain: http://ds.paysys.cn    
+
+# REDIS (RedisProperties)
+# database name defaul 0 
+  redis:
+    database: 0
+    host: 127.0.0.1
+    port: 6379
+    password: 123456
+    pool:
+      max-idle: 8   
+      min-idle: 0  
+      max-active: 8  
+      max-wait: -1 
+    #sentinel:
+      #master:
+      #nodes:
+eureka:
+  client:
+    enabled: false   

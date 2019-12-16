@@ -1,0 +1,468 @@
+/**
+ * 
+ */
+package com.sjy.service.impl;
+
+import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.annotation.Resource;
+import javax.transaction.Transactional;
+import javax.transaction.Transactional.TxType;
+
+import org.mortbay.log.Log;
+import org.springframework.stereotype.Service;
+
+import com.sjy.base.domain.SimpleOrg;
+import com.sjy.base.service.SimpleOrgService;
+import com.sjy.constant.ChannelConstant;
+import com.sjy.constant.ChannelType;
+import com.sjy.dao.OrgChlRepository;
+import com.sjy.dao.UserChlRepository;
+import com.sjy.domain.OrgChl;
+import com.sjy.domain.UserChl;
+import com.sjy.model.CardUserVo;
+import com.sjy.model.UserChlVo;
+import com.sjy.service.CrmUserService;
+import com.sjy.service.PayService;
+import com.sjy.service.PortalService;
+import com.sjy.service.UserChlService;
+import com.sjy.util.BeanUtils;
+import com.sjy.util.DateUtils;
+import com.sjy.util.StringUtil;
+
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * @Title: UserChlService.java
+ * @Package com.sjy.service.impl
+ * @Description: TODO(用一句话描述该文件做什么)
+ * @author liyan
+ * @email 289149734@qq.com
+ * @date 2018年1月27日 下午12:15:59
+ * @version V1.0
+ */
+@Transactional
+@Service("userChlService")
+@Slf4j
+public class UserChlServiceImpl implements UserChlService {
+
+	@Resource
+	UserChlRepository userChlRepository;
+
+	@Resource
+	OrgChlRepository orgChlRepository;
+
+	@Resource
+	CrmUserService crmUserService;
+	@Resource
+	SimpleOrgService simpleOrgService;
+	
+	@Resource
+	PayService payService;
+	
+	@Resource
+	PortalService portalService;
+
+	@Override
+	public String getKey(Date taskDate) {
+		return ChannelConstant.USER_CHL_PRE + DateUtils.format(taskDate, "yyyy-MM-dd");
+	}
+
+	@Override
+	public OrgChl findOrgChlByWx(String appId, String openId) {
+		UserChl userChl = userChlRepository.findByAppIdAndOpenId(appId, openId);
+		if (userChl != null) {
+			return userChl.getChl();
+		}
+		return null;
+	}
+	
+	@Override
+	public UserChlVo findUserChlByWx(String appId, String openId) {
+		UserChl userChl = null;
+		List<UserChl> userChlList = userChlRepository.findUserChlsByAppIdAndOpenId(appId, openId);
+		if(userChlList != null && userChlList.size() > 0){
+			userChl = userChlList.get(0);
+		}
+		UserChlVo userChlVo =new UserChlVo();
+		if(userChl != null) BeanUtils.copyBeanNotNull2Bean(userChl, userChlVo);
+		return userChlVo;
+	}
+	@Override
+	public int countUserChlByAppIdAndOpenId(String appId, String openId){
+		return userChlRepository.countByAppIdAndOpenId(appId, openId);
+	}
+	/**
+	 * 保存渠道和会员关系
+	 * 
+	 * @param userChlVo
+	 * @param mobilePhone
+	 *            推荐人手机号
+	 * @param operId
+	 *            注册操作员
+	 * @return
+	 */
+	@Override
+	@Transactional(value = TxType.REQUIRES_NEW)
+	public void saveUserChl(UserChlVo userChlVo, Long orgId, Integer orgLevel, String mobilePhone, Long operId) {
+		UserChl userChl = null;
+		if (StringUtil.isNotBlank(userChlVo.getOpenId())) {
+			userChl = userChlRepository.findByAppIdAndOpenId(userChlVo.getAppId(), userChlVo.getOpenId());
+		} else {
+			userChl = userChlRepository.findByCardUser(userChlVo.getCardUser());
+		}
+
+		// 如果已经存在同时标记是会员的不做处理
+		if (userChl != null && userChl.getMember()) {
+			return;
+		}
+
+		// 查找推荐人的渠道信息
+		if (userChl == null) {
+			userChl = BeanUtils.copyBeanNotNull2Bean(userChlVo, UserChl.class);
+			OrgChl orgChl = null;
+			if (StringUtil.isNotBlank(mobilePhone)) {
+				// 手工输入推荐人手机号
+				userChl.setChannelType(ChannelType.RECOMMED);
+				//orgChl = orgChlRepository.findByMobilePhone(mobilePhone, orgId, orgLevel);
+				/*Log.debug("mobilePhone:"+mobilePhone);
+				Log.debug("orgId:"+orgId);
+				Log.debug("orgLevel:"+orgLevel);*/
+				//有数据重复记录，取第一条
+				List<OrgChl> list = orgChlRepository.findByMobilePhone(mobilePhone, orgId);
+				if(list != null && list.size() >0){
+					orgChl = list.get(0);
+				}
+			}
+			if (orgChl == null && operId != null) {
+				// 平台开户注册
+				userChl.setChannelType(ChannelType.OPERATOR);
+				// 查找注册操作员的渠道信息
+				orgChl = orgChlRepository.findByOperId(operId);
+			}
+			if (orgChl == null) {
+				return;// 没有设置关注渠道
+			}
+			userChl.setChl(orgChl);
+			userChl.setCreateTime(new Date());
+		}
+
+		userChl.setMember(userChlVo.getMember());
+		userChl.setRegisterDate(userChlVo.getRegisterDate());
+		userChl.setCardUser(userChlVo.getCardUser());
+		userChlRepository.save(userChl);
+	}
+
+	@Override
+	public void saveUserChl(String appId, String openId, String nickName, Long orgChlId) {
+		UserChl userChl = userChlRepository.findByAppIdAndOpenId(appId, openId);
+		if (userChl == null) {
+			OrgChl orgChl = orgChlRepository.findOne(orgChlId);
+			if (orgChl != null) {
+				userChl = new UserChl();
+				userChl.setAppId(appId);
+				userChl.setOpenId(openId);
+				userChl.setCreateTime(new Date());
+				userChl.setNickName(nickName);
+				userChl.setChl(orgChl);
+				userChl.setChannelType(ChannelType.SCAN);
+				userChlRepository.save(userChl);
+			}
+		}
+	}
+
+	@Override
+	public Map<String, Object> getUserChlByOrgChl(Long orgchlId) {
+		//return userChlRepository.countGzAngZc(orgchlId);
+		Map<String, Object> result = new HashMap<String, Object>();
+		OrgChl chl = orgChlRepository.findOne(orgchlId);
+		Integer countGz = 0;
+		Integer countMember = 0;
+		List<Long> totalVoList = new ArrayList<Long>();
+		List<UserChl> userChlList = userChlRepository.findByChl(chl.getId());
+		countGz = userChlList.size();
+		for(UserChl userChl :userChlList){
+			if(userChl.getRegisterDate() != null && userChl.getMember()){
+				CardUserVo cardUserVo = crmUserService.getCardUserVo(userChl.getCardUser());
+				totalVoList.add(cardUserVo.getId());
+				countMember++;
+			}
+		}
+		String mobilePhone = chl.getMobilePhone();
+		if((mobilePhone == null || "".equals(mobilePhone.trim()))
+				&& chl.getCardUser() != null){
+			CardUserVo cardUserVo = crmUserService.getCardUserVo(chl.getCardUser());
+			mobilePhone = cardUserVo.getMobilePhone();
+		}
+		if(mobilePhone != null && !"".equals(mobilePhone.trim())){
+			List<CardUserVo> cuList = crmUserService.getByPhone(mobilePhone.trim(),0,1000);
+		
+			for(CardUserVo cardUserVo : cuList){
+				if(!totalVoList.contains(cardUserVo.getId())){
+					//未统计过，添加,避免重复统计
+					countMember++;
+				}				
+			}
+		}
+		
+		result.put("gzNum", countGz);
+		result.put("zcNum", countMember);
+		return result;
+	
+	}
+
+	@Override
+	public Map<String, Object> getRecommender(String appId, String openId) {
+		Map<String, Object> result = new HashMap<String, Object>();
+		UserChl userChl = userChlRepository.findByAppIdAndOpenId(appId, openId);
+		if (userChl != null) {
+			OrgChl orgChl = userChl.getChl();
+			if (orgChl.getCardUser() != null) {
+				CardUserVo user = crmUserService.getCardUserVo(orgChl.getCardUser());
+				result.put("shareopenid", user.getOpenId());
+				result.put("sharename", user.getName());
+			}
+			//异业渠道二维码分享
+			else if(StringUtil.isNotEmpty(orgChl.getMobilePhone())){
+				result.put("otherPhone", orgChl.getMobilePhone());
+				result.put("sharename", orgChl.getChlName());
+				result.put("isYiyeChannel", "1");
+			}
+		}
+		Log.info("分享人昵称："+result.get("sharename"));
+		Log.info("分享人openid："+result.get("shareopenid"));
+		return result;
+	}
+	
+	@Override
+	public Map<String, Object> getChlDetailList(Long chlId) {
+		Map<String, Object> result = new HashMap<String, Object>();
+		List<Map<String, Object>> data = new ArrayList<Map<String, Object>>();
+		OrgChl chl = orgChlRepository.findOne(chlId);
+		Integer registerCount = 0;
+		Integer totalYiyeConponCount = 0; 
+		Long totalRechargeAmount = 0l;
+		Long totalConsumeAmount = 0l;
+		List<UserChl> userChlList = userChlRepository.findByChl(chl.getId());
+		for(UserChl userChl :userChlList){
+			Map<String, Object> map = new HashMap<String, Object>();
+			map.put("id",  chl.getId());
+			SimpleOrg org = simpleOrgService.findOne(chl.getOrg().getId());
+			map.put("orgName", org.getName().trim());
+			if(chl.getOrgchlType() == 2){
+				//异业渠道
+				SimpleOrg yiyeOrg = simpleOrgService.findOne(chl.getYiyeOrg());
+				map.put("yiyeOrgName", yiyeOrg.getName().trim());
+			}
+			map.put("chlName",  chl.getChlName().trim());
+			map.put("nickName", userChl.getNickName().trim());
+			SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			map.put("createTime", format.format(userChl.getCreateTime()));
+			if(userChl.getRegisterDate() != null){
+				registerCount++;
+				map.put("registerDate", format.format(userChl.getRegisterDate()));
+				map.put("isMember", "是");
+				map.put("member", 1);
+				
+				CardUserVo cardUserVo = crmUserService.getCardUserVo(userChl.getCardUser());
+				Long amount = payService.getRechargeAmount(cardUserVo.getId());
+				
+				String rechargeAmount = "0.00";
+				if(amount != null){
+					totalRechargeAmount += amount;
+					rechargeAmount = String.valueOf(amount/100.00);
+				}
+				//充值额
+				map.put("rechargeAmount", rechargeAmount);
+				
+				
+				String consumeAmount = "0.00";
+				amount = payService.getConsumeAmount(cardUserVo.getId());
+				
+				if(amount != null){
+					totalConsumeAmount += amount;
+					consumeAmount = String.valueOf(amount/100.00);
+				}
+				
+				//消费额
+				map.put("consumeAmount", consumeAmount);
+				
+				if(chl.getOrgchlType() == 2){
+					//异业渠道
+					SimpleOrg yiyeOrg = simpleOrgService.findOne(chl.getYiyeOrg());
+					map.put("yiyeOrgName", yiyeOrg.getName().trim());
+					Integer yiyeConponCount = payService.getYiyeConponCount(cardUserVo.getId(), userChl.getChl().getOrg().getId(), yiyeOrg.getCardUnique());
+					totalYiyeConponCount += yiyeConponCount;
+					//异业券核销张数
+					map.put("yiyeConponCount", yiyeConponCount);
+					
+					/*String yiyeOrderAmount = "0.00";
+					amount = payService.getRechargeAmount(cardUserVo.getId());
+					if(amount != null){
+						yiyeOrderAmount = String.valueOf(amount/100.00);
+					}
+					//异业券订单总金额
+					map.put("yiyeOrderAmount", yiyeOrderAmount);*/
+				}
+				else{
+					map.put("yiyeConponAmount", 0);
+				}
+				
+			}
+			else{
+				map.put("registerDate", "");
+				map.put("isMember", "否");
+				map.put("member", 0);
+				//充值额
+				map.put("rechargeAmount", "0.00");
+				//消费额
+				map.put("consumeAmount", "0.00");
+				//异业券核销张数
+				map.put("yiyeConponCount", 0);
+				//异业券核销金额
+				map.put("yiyeConponAmount", "0.00");
+				//异业券订单总金额
+				map.put("yiyeOrderAmount", "0.00");
+			}
+			data.add(map);
+		}
+		result.put("objects", data);
+		//平台配置分润比例
+		Float  pingtaifenrun=Float.parseFloat((String) portalService.handlerRequest("o2OCardService_getChannelRo"));
+		String statTitle = "关注人数："+userChlList.size();
+		statTitle += ",注册人数:"+registerCount;
+		if(userChlList.size() > 0){
+			statTitle += ",转换率:"+registerCount*100/userChlList.size()+"%";
+		}
+		else{
+			statTitle += ",转换率:0%";
+		}
+		statTitle += ",总充值金额:"+totalRechargeAmount/100.00;
+		statTitle += ",总消费金额:"+totalConsumeAmount/100.00;
+		statTitle += ",总核销异业券张数:"+totalYiyeConponCount;
+		 DecimalFormat df = new DecimalFormat("0.00");
+		if(chl.getOrgchlType()==1){//本机构机渠道二维码
+			if(chl.getRebid()!=null){//判断是那种分润模式及计算分润金额
+				if(chl.getRebid()==1){
+					statTitle +=",分润模式:按关注人数";
+					statTitle +=",应付平台金额:"+df.format(userChlList.size()*(pingtaifenrun/100)*chl.getRebRatio());
+					statTitle +=",应付渠道金额:"+df.format(userChlList.size()*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}else if(chl.getRebid()==2){
+					statTitle +=",分润模式:按关注人数";
+					statTitle +=",应付平台金额:"+df.format(registerCount*(pingtaifenrun/100)*chl.getRebRatio());
+					statTitle +=",应付渠道金额:"+df.format(registerCount*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}else if(chl.getRebid()==3){
+					statTitle +=",分润模式:按充值金额";
+					statTitle +=",应付平台金额:"+df.format(totalRechargeAmount/100.00*(pingtaifenrun/100)*chl.getRebRatio());
+					statTitle +=",应付渠道金额:"+df.format(totalRechargeAmount/100.00*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}else if(chl.getRebid()==4){
+					statTitle +=",分润模式:按消费金额";
+					statTitle +=",应付平台金额:"+df.format(totalConsumeAmount/100.00*(pingtaifenrun/100)*chl.getRebRatio());
+					statTitle +=",应付渠道金额:"+df.format(totalConsumeAmount/100.00*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}else if(chl.getRebid()==5){
+					statTitle +=",分润模式:按核销异业券张数";
+					statTitle +=",应付平台金额:"+df.format(totalYiyeConponCount*(pingtaifenrun/100)*chl.getRebRatio());
+					statTitle +=",应付渠道金额:"+df.format(totalYiyeConponCount*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}
+			}else{
+				statTitle += ",分润模式:无";
+				statTitle += ",应付渠道金额:0元";
+				statTitle += ",应付金额:0元";
+			}
+		}else{//异业机构即异业渠道二维码
+			if(chl.getRebid()!=null){//判断是那种分润模式及计算分润金额
+				if(chl.getRebid()==1){
+					statTitle +=",分润模式:按关注人数";
+					statTitle +=",应收金额:"+df.format(userChlList.size()*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}else if(chl.getRebid()==2){
+					statTitle +=",分润模式:按关注人数";
+					statTitle +=",应收金额:"+df.format(registerCount*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}else if(chl.getRebid()==3){
+					statTitle +=",分润模式:按充值金额";
+					statTitle +=",应收金额:"+df.format(totalRechargeAmount/100.00*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}else if(chl.getRebid()==4){
+					statTitle +=",分润模式:按消费金额";
+					statTitle +=",应收金额:"+df.format(totalConsumeAmount/100.00*chl.getRebRatio()*(1-pingtaifenrun/100));
+				}
+			}else{
+				statTitle += ",分润模式:无";
+				statTitle += ",应收金额:0元";
+			}
+		}
+		
+		result.put("statTitle", statTitle);
+		result.put("start", 1);
+		result.put("total", userChlList.size());
+		return result;
+	}
+
+	@Override
+	public Map<String, Object> getTradeInfoByOrgChl(Long chlId) {
+		Map<String, Object> result = new HashMap<String, Object>();
+		OrgChl chl = orgChlRepository.findOne(chlId);
+		Long totalRechargeAmount = 0l;
+		Long totalConsumeAmount = 0l;
+		List<Long> totalVoList = new ArrayList<Long>();
+		List<UserChl> userChlList = userChlRepository.findByChl(chl.getId());
+		for(UserChl userChl :userChlList){
+			if(userChl.getRegisterDate() != null){
+				
+				CardUserVo cardUserVo = crmUserService.getCardUserVo(userChl.getCardUser());
+				totalVoList.add(cardUserVo.getId());
+				Long amount = payService.getRechargeAmount(cardUserVo.getId());
+				
+				if(amount != null){
+					totalRechargeAmount += amount;
+				}
+				
+				amount = payService.getConsumeAmount(cardUserVo.getId());
+				
+				if(amount != null){
+					totalConsumeAmount += amount;
+				}
+				
+			}
+		}
+		String mobilePhone = chl.getMobilePhone();
+		if((mobilePhone == null || "".equals(mobilePhone.trim()))
+				&& chl.getCardUser() != null){
+			CardUserVo cardUserVo = crmUserService.getCardUserVo(chl.getCardUser());
+			mobilePhone = cardUserVo.getMobilePhone();
+		}
+		//log.info("mobilePhone:"+mobilePhone);
+		if(mobilePhone != null && !"".equals(mobilePhone.trim())){
+			List<CardUserVo> cuList = crmUserService.getByPhone(mobilePhone.trim(),0,1000);
+			//log.info("size:"+cuList.size());
+			for(CardUserVo cardUserVo : cuList){
+				if(!totalVoList.contains(cardUserVo.getId())){
+					//未统计过，添加,避免重复统计
+					//log.info("recommanded user:"+cardUserVo.getId());
+					Long amount = payService.getRechargeAmount(cardUserVo.getId());
+					
+					if(amount != null){
+						totalRechargeAmount += amount;
+					}
+					
+					amount = payService.getConsumeAmount(cardUserVo.getId());
+					
+					if(amount != null){
+						totalConsumeAmount += amount;
+					}
+				}
+				
+			}
+		}
+		
+		result.put("topupAmount", totalRechargeAmount/100.00);
+		result.put("consumeAmount", totalConsumeAmount/100.00);
+		return result;
+	}
+	
+	
+}

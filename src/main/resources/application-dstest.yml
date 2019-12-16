@@ -1,0 +1,47 @@
+#log
+logging:
+  config: classpath:log4j2_nosql.xml
+  
+spring:
+  thymeleaf:
+    cache: true
+  jpa:
+    database-platform: org.hibernate.dialect.Oracle10gDialect
+    database: ORACLE
+    properties:
+      hibernate.default_catalog: DSCARD
+      hibernate.default_schema: DSCARD  
+  datasource:
+    url: jdbc:oracle:thin:@192.168.1.58:1521:orcl
+    username: DSCARD
+    password: DSCARD123456
+    driverClassName: oracle.jdbc.driver.OracleDriver
+#  data:
+#    mongodb:
+#      host: 192.168.1.115
+#      port: 27017
+#      database: newlog
+        
+# REDIS (RedisProperties)
+# database name defaul 0 
+  redis:
+    database: 0
+    host: 127.0.0.1
+    port: 6379
+    password: 123456
+    pool:
+      max-idle: 8   
+      min-idle: 0  
+      max-active: 8  
+      max-wait: -1 
+    #sentinel:
+      #master:
+      #nodes:
+
+  dubbo:
+    file: dubbo/spring-dstest.xml
+ 
+eureka:
+  client:
+    service-url:
+      defaultZone: http://admin:sanjiaoyi123456@192.168.1.60:9001/eureka/,http://admin:sanjiaoyi123456@192.168.1.60:9002/eureka/

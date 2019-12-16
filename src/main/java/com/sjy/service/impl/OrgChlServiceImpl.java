@@ -1,0 +1,170 @@
+/**
+ * 
+ */
+package com.sjy.service.impl;
+
+import java.util.List;
+import java.util.Map;
+
+import javax.annotation.Resource;
+import javax.transaction.Transactional;
+
+import org.mortbay.log.Log;
+import org.springframework.stereotype.Service;
+
+import com.sjy.base.domain.SimpleOrg;
+import com.sjy.base.service.SimpleOperService;
+import com.sjy.base.service.SimpleOrgService;
+import com.sjy.constant.ChannelConstant;
+import com.sjy.dao.OrgChlRepository;
+import com.sjy.dao.UserChlRepository;
+import com.sjy.domain.OrgChl;
+import com.sjy.exception.CrmAssert;
+import com.sjy.model.CardUserVo;
+import com.sjy.model.OrgChlVo;
+import com.sjy.model.WeixinUserVo;
+import com.sjy.service.CrmUserService;
+import com.sjy.service.OrgChlService;
+import com.sjy.service.WeixinMpService;
+import com.sjy.util.BeanUtils;
+import com.sjy.util.StringUtil;
+
+/**
+ * @Title: OrgChlService.java
+ * @Package com.sjy.service.impl
+ * @Description: OrgChl服务API
+ * @author liyan
+ * @email 289149734@qq.com
+ * @date 2018年1月24日 下午5:36:24
+ * @version V1.0
+ */
+@Transactional
+@Service("orgChlService")
+public class OrgChlServiceImpl implements OrgChlService {
+	@Resource
+	OrgChlRepository orgChlRepository;
+
+	@Resource
+	UserChlRepository userChlRepository;
+
+	@Resource
+	SimpleOrgService simpleOrgService;
+
+	@Resource
+	SimpleOperService simpleOperService;
+
+	@Resource
+	WeixinMpService weixinMpService;
+
+	@Resource
+	CrmUserService crmUserService;
+
+	@Override
+	public void delete(Long chlId) {
+		int count = userChlRepository.countUserChlByOrgChl(chlId);
+		CrmAssert.isTrue(count == 0, "已关联其他数据，无法删除");
+		orgChlRepository.delete(chlId);
+	}
+
+	@Override
+	public OrgChl save(OrgChlVo orgChlVo) {
+		CrmAssert.notNull(orgChlVo.getChlName(), "渠道名称必填");
+		CrmAssert.notNull(orgChlVo.getOrgId(), "所属机构必填");
+		CrmAssert.notNull(orgChlVo.getRebid(), "渠道分润模式必填");
+		CrmAssert.notNull(orgChlVo.getRebRatio(), "渠道分润金额/比例必填");
+		SimpleOrg org = simpleOrgService.findOne(orgChlVo.getOrgId());
+		CrmAssert.notNull(orgChlVo.getOrgId(), "所属机构不存在");
+
+		// 判断同一个关联操作员、或者关联会员只允许开通一个渠道
+		if (StringUtil.isNotBlank(orgChlVo.getMobilePhone())) {
+			SimpleOrg issuer = simpleOrgService.getIssuerOrg(org);
+			OrgChl orgChlDb = orgChlRepository.findByMobilePhone(orgChlVo.getMobilePhone(), issuer.getId(),
+					issuer.getOrgLevel());
+			if (orgChlDb != null  && orgChlDb.getId() != orgChlVo.getId()) {
+				CrmAssert.isTrue(orgChlDb.getId().equals(orgChlVo.getId()), "该手机号已经绑定渠道了");
+			}
+		}
+		if (orgChlVo.getOperId() != null) {
+			OrgChl orgChlDb = orgChlRepository.findByOperId(orgChlVo.getOperId());
+			if (orgChlDb != null  && orgChlDb.getId() != orgChlVo.getId()) {
+				CrmAssert.isTrue(orgChlDb.getId().equals(orgChlVo.getId()), "该操作员已经绑定渠道了");
+			}
+		}
+		if(orgChlVo.getYiyeOrg() != null){
+			OrgChl orgChlDb = orgChlRepository.findByYiyeOrg(orgChlVo.getOrgId(),orgChlVo.getYiyeOrg());
+			if (orgChlDb != null && orgChlDb.getId() != orgChlVo.getId()) {
+				CrmAssert.isTrue(orgChlDb.getId().equals(orgChlVo.getId()), "该异业机构已经绑定渠道了");
+			}
+		}
+		//异业机构
+		if(orgChlVo.getOrgchlType()==2 ){
+			CrmAssert.isTrue(orgChlVo.getRebid()==5, "异业机构分润模式不能按核销异业券张数");
+		}
+		OrgChl orgChl = null;
+		if (orgChlVo.getId() != null) {
+			orgChl = orgChlRepository.findOne(orgChlVo.getId());
+			BeanUtils.copyBeanNotNull2Bean(orgChlVo, orgChl);
+		} else {
+			orgChl = BeanUtils.copyBeanNotNull2Bean(orgChlVo, OrgChl.class);
+		}
+		orgChl.setOrg(org);
+		if (orgChlVo.getOperId() != null) {
+			orgChl.setOper(simpleOperService.findOne(orgChlVo.getOperId()));
+		}
+		orgChl = orgChlRepository.save(orgChl);
+
+		// 生成微信永久二维码
+		if (orgChlVo.getId() == null || StringUtil.isBlank(orgChl.getWechatUrl())) {
+			SimpleOrg issuerOrg = simpleOrgService.getIssuerOrg(orgChl.getOrg());
+			String wechatUrl = weixinMpService.genQrCode(issuerOrg.getAppId(),
+					ChannelConstant.WX_SCAN_KEY + orgChl.getId());
+			CrmAssert.notNull(wechatUrl, "生成二维码失败");
+			orgChl.setWechatUrl(wechatUrl);
+			return orgChlRepository.save(orgChl);
+		}
+
+		return orgChl;
+	}
+
+	@Override
+	public OrgChl findOne(Long chlId) {
+		return orgChlRepository.findOne(chlId);
+	}
+
+	@Override
+	public OrgChl getOrgChl(String appId, String openId) {
+		CardUserVo owner = crmUserService.findCardUser(appId, openId);
+		if (owner == null) {
+			return null;
+		}
+		OrgChl orgChl = orgChlRepository.findByCardUser(owner.getId());
+		if (orgChl == null) {
+			orgChl = orgChlRepository.findByMobilePhone(owner.getMobilePhone(), owner.getLocation().getId(),
+					owner.getLocation().getOrgLevel());
+			if (orgChl == null) {
+				orgChl = new OrgChl();
+				orgChl.setCardUser(owner.getId());
+				orgChl.setOrg(owner.getBuildFileStation());
+				orgChl.setChlName(owner.getName());
+				orgChl.setMobilePhone(owner.getMobilePhone());
+				orgChl = orgChlRepository.save(orgChl);
+			}
+		}
+		if (StringUtil.isBlank(orgChl.getWechatUrl())) {
+			String wechatUrl = weixinMpService.genQrCode(appId, ChannelConstant.WX_SCAN_KEY + orgChl.getId());
+			orgChl.setWechatUrl(wechatUrl);
+			orgChl = orgChlRepository.save(orgChl);
+		}
+		WeixinUserVo weixinUserVo  = weixinMpService.getWxUserByOpenId(owner.getAppId(), owner.getOpenId());
+		Log.debug("分享人："+owner.getName()+","+owner.getMobilePhone()+","+owner.getOpenId());
+		Log.debug("分享人头像："+weixinUserVo.getHeadimgurl());
+		if(owner.getName() != null && !"".equals(owner.getName().trim())){
+			orgChl.setShareUserName(owner.getName());
+		}
+		else
+			orgChl.setShareUserName(weixinUserVo.getNickname());
+		orgChl.setShareUserHeadimgurl(weixinUserVo.getHeadimgurl());
+		return orgChl;
+	}
+
+}

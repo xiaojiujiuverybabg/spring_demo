@@ -1,0 +1,27 @@
+/**
+ * 
+ */
+package com.sjy.service;
+
+import com.sjy.domain.OrgChl;
+import com.sjy.model.OrgChlVo;
+
+/**
+ * @Title: OrgChlService.java
+ * @Package com.sjy.service
+ * @Description: TODO(用一句话描述该文件做什么)
+ * @author liyan
+ * @email 289149734@qq.com
+ * @date 2018年1月29日 下午8:24:05
+ * @version V1.0
+ */
+public interface OrgChlService {
+
+	void delete(Long chlId);
+
+	OrgChl save(OrgChlVo orgChlVo);
+
+	OrgChl findOne(Long chlId);
+
+	OrgChl getOrgChl(String appId, String openId);
+}

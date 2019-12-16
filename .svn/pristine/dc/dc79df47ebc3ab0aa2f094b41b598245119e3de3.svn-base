@@ -1,0 +1,171 @@
+/**
+ * 
+ */
+package com.sjy.service.impl;
+
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.annotation.Resource;
+import javax.transaction.Transactional;
+import javax.transaction.Transactional.TxType;
+
+import org.apache.commons.beanutils.BeanUtilsBean2;
+import org.mortbay.log.Log;
+import org.springframework.stereotype.Service;
+
+import com.sjy.constant.ChannelConstant;
+import com.sjy.constant.ChannelType;
+import com.sjy.dao.OrgChlRepository;
+import com.sjy.dao.UserChlRepository;
+import com.sjy.domain.OrgChl;
+import com.sjy.domain.UserChl;
+import com.sjy.model.CardUserVo;
+import com.sjy.model.UserChlVo;
+import com.sjy.service.CrmUserService;
+import com.sjy.service.UserChlService;
+import com.sjy.util.BeanUtils;
+import com.sjy.util.DateUtils;
+import com.sjy.util.StringUtil;
+
+/**
+ * @Title: UserChlService.java
+ * @Package com.sjy.service.impl
+ * @Description: TODO(用一句话描述该文件做什么)
+ * @author liyan
+ * @email 289149734@qq.com
+ * @date 2018年1月27日 下午12:15:59
+ * @version V1.0
+ */
+@Transactional
+@Service("userChlService")
+public class UserChlServiceImpl implements UserChlService {
+
+	@Resource
+	UserChlRepository userChlRepository;
+
+	@Resource
+	OrgChlRepository orgChlRepository;
+
+	@Resource
+	CrmUserService crmUserService;
+
+	@Override
+	public String getKey(Date taskDate) {
+		return ChannelConstant.USER_CHL_PRE + DateUtils.format(taskDate, "yyyy-MM-dd");
+	}
+
+	@Override
+	public OrgChl findOrgChlByWx(String appId, String openId) {
+		UserChl userChl = userChlRepository.findByAppIdAndOpenId(appId, openId);
+		if (userChl != null) {
+			return userChl.getChl();
+		}
+		return null;
+	}
+	
+	@Override
+	public UserChlVo findUserChlByWx(String appId, String openId) {
+		UserChl userChl = userChlRepository.findByAppIdAndOpenId(appId, openId);
+		UserChlVo userChlVo =new UserChlVo();
+		if(userChl != null) BeanUtils.copyBeanNotNull2Bean(userChl, userChlVo);
+		return userChlVo;
+	}
+	@Override
+	public int countUserChlByAppIdAndOpenId(String appId, String openId){
+		return userChlRepository.countByAppIdAndOpenId(appId, openId);
+	}
+	/**
+	 * 保存渠道和会员关系
+	 * 
+	 * @param userChlVo
+	 * @param mobilePhone
+	 *            推荐人手机号
+	 * @param operId
+	 *            注册操作员
+	 * @return
+	 */
+	@Override
+	@Transactional(value = TxType.REQUIRES_NEW)
+	public void saveUserChl(UserChlVo userChlVo, Long orgId, Integer orgLevel, String mobilePhone, Long operId) {
+		UserChl userChl = null;
+		if (StringUtil.isNotBlank(userChlVo.getOpenId())) {
+			userChl = userChlRepository.findByAppIdAndOpenId(userChlVo.getAppId(), userChlVo.getOpenId());
+		} else {
+			userChl = userChlRepository.findByCardUser(userChlVo.getCardUser());
+		}
+
+		// 如果已经存在同时标记是会员的不做处理
+		if (userChl != null && userChl.getMember()) {
+			return;
+		}
+
+		// 查找推荐人的渠道信息
+		if (userChl == null) {
+			userChl = BeanUtils.copyBeanNotNull2Bean(userChlVo, UserChl.class);
+			OrgChl orgChl = null;
+			if (StringUtil.isNotBlank(mobilePhone)) {
+				// 手工输入推荐人手机号
+				userChl.setChannelType(ChannelType.RECOMMED);
+				orgChl = orgChlRepository.findByMobilePhone(mobilePhone, orgId, orgLevel);
+			}
+			if (orgChl == null && operId != null) {
+				// 平台开户注册
+				userChl.setChannelType(ChannelType.OPERATOR);
+				// 查找注册操作员的渠道信息
+				orgChl = orgChlRepository.findByOperId(operId);
+			}
+			if (orgChl == null) {
+				return;// 没有设置关注渠道
+			}
+			userChl.setChl(orgChl);
+			userChl.setCreateTime(new Date());
+		}
+
+		userChl.setMember(userChlVo.getMember());
+		userChl.setRegisterDate(userChlVo.getRegisterDate());
+		userChl.setCardUser(userChlVo.getCardUser());
+		userChlRepository.save(userChl);
+	}
+
+	@Override
+	public void saveUserChl(String appId, String openId, String nickName, Long orgChlId) {
+		UserChl userChl = userChlRepository.findByAppIdAndOpenId(appId, openId);
+		if (userChl == null) {
+			OrgChl orgChl = orgChlRepository.findOne(orgChlId);
+			if (orgChl != null) {
+				userChl = new UserChl();
+				userChl.setAppId(appId);
+				userChl.setOpenId(openId);
+				userChl.setCreateTime(new Date());
+				userChl.setNickName(nickName);
+				userChl.setChl(orgChl);
+				userChl.setChannelType(ChannelType.SCAN);
+				userChlRepository.save(userChl);
+			}
+		}
+	}
+
+	@Override
+	public Map<String, Object> getUserChlByOrgChl(Long orgchlId) {
+		return userChlRepository.countGzAngZc(orgchlId);
+	}
+
+	@Override
+	public Map<String, Object> getRecommender(String appId, String openId) {
+		Map<String, Object> result = new HashMap<String, Object>();
+		UserChl userChl = userChlRepository.findByAppIdAndOpenId(appId, openId);
+		if (userChl != null) {
+			OrgChl orgChl = userChl.getChl();
+			if (orgChl.getCardUser() != null) {
+				CardUserVo user = crmUserService.getCardUserVo(orgChl.getCardUser());
+				result.put("shareopenid", user.getOpenId());
+				result.put("sharename", user.getName());
+			}
+		}
+		Log.info("分享人昵称："+result.get("sharename"));
+		Log.info("分享人openid："+result.get("shareopenid"));
+		return result;
+	}
+}

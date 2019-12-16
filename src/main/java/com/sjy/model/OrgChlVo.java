@@ -1,0 +1,55 @@
+/**
+ * 
+ */
+package com.sjy.model;
+
+import com.sjy.util.SeqRootEntity;
+
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+
+/**
+ * @Title: OrgChlVo.java
+ * @Package com.sjy.model
+ * @Description: TODO(用一句话描述该文件做什么)
+ * @author liyan
+ * @email 289149734@qq.com
+ * @date 2018年1月24日 下午5:23:16
+ * @version V1.0
+ */
+@SuppressWarnings("serial")
+@Data
+@EqualsAndHashCode(callSuper = true)
+public class OrgChlVo extends SeqRootEntity {
+
+	Long orgId; // 所属机构
+	String orgName;// 机构名称
+
+	String chlName; // 渠道名称
+
+	String localUrl; // 本地二维码路径
+
+	String wechatUrl; // 微信二维码路径
+
+	String qrcodeImgUrl; // 微信二维码图片路径
+
+	Long operId; // 关联操作员
+	String operName;// 操作员名称
+
+	String mobilePhone; // 关联手机号
+
+	Long cardUser; // 关联会员[CardUser]Id
+
+	String bankName; // 开户行信息
+
+	String bankNo; // 银行账号
+	
+	Integer orgchlType;	//渠道类型1：本机构 2：异业机构
+	
+	Long yiyeOrg; // 异业机构
+	
+    Integer  rebid;//分润模式
+    
+    Float  rebRatio;//分润比例
+
+}
